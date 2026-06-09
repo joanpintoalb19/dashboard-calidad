@@ -180,7 +180,7 @@
 <body>
 
 <header>
-  <h1>📊 Dashboard de Calidad y Outliers — Ventas</h1>
+  <h1>📊 Dashboard de Calidad y Outliers</h1>
   <span id="subtitle">Cargando dataset...</span>
 </header>
 
@@ -225,6 +225,28 @@
       <h3>Flags de calidad — conteo por tipo</h3>
       <canvas id="chart-flags"></canvas>
     </div>
+  </div>
+
+  <!-- Tabla de registros con problemas -->
+  <div class="table-card" style="margin-top:20px">
+    <h3>Detalle de registros con problemas críticos (<span id="n-problemas">—</span> registros)</h3>
+    <p style="font-size:12px;color:#64748B;margin-bottom:12px">
+      Flags críticos: fecha inválida · cajas negativas · moneda inválida · SKU sin catálogo · cliente sin catálogo
+    </p>
+    <table id="tabla-problemas">
+      <thead>
+        <tr>
+          <th>Fuente</th>
+          <th>Canal</th>
+          <th>SKU</th>
+          <th>Moneda</th>
+          <th>Cajas</th>
+          <th>Monto</th>
+          <th>Problema crítico</th>
+        </tr>
+      </thead>
+      <tbody></tbody>
+    </table>
   </div>
 </div>
 
@@ -421,6 +443,49 @@
           }}
         }
       }
+    });
+
+    // Tabla de registros con problemas críticos
+    const FLAGS_CRITICOS = {
+      'flag_fecha_invalida':       'Fecha de venta inválida o imparseable',
+      'flag_cajas_negativas':      'Volumen de cajas negativo',
+      'flag_moneda_invalida':      'Moneda inválida o no reconocida',
+      'flag_sku_sin_catalogo':     'SKU no encontrado en catálogo',
+      'flag_cliente_sin_catalogo': 'Cliente no encontrado en catálogo',
+    };
+    const COLOR_PROBLEMA = {
+      'flag_fecha_invalida':       '#8B5CF6',
+      'flag_cajas_negativas':      '#EF4444',
+      'flag_moneda_invalida':      '#F97316',
+      'flag_sku_sin_catalogo':     '#F59E0B',
+      'flag_cliente_sin_catalogo': '#06B6D4',
+    };
+
+    const conProblemas = data.filter(r => !parseBool(r['es_curado']));
+    document.getElementById('n-problemas').textContent = conProblemas.length;
+
+    const tbodyP = document.querySelector('#tabla-problemas tbody');
+    conProblemas.forEach(r => {
+      // Encontrar qué flags críticos tiene este registro
+      const flagsActivos = Object.entries(FLAGS_CRITICOS)
+        .filter(([col]) => parseBool(r[col]));
+
+      const badgesHtml = flagsActivos.map(([col, desc]) =>
+        `<span class="badge" style="background:${COLOR_PROBLEMA[col]}22;color:${COLOR_PROBLEMA[col]};margin:2px 2px 2px 0;display:inline-block">
+          ${desc}
+        </span>`
+      ).join('');
+
+      const tr = document.createElement('tr');
+      tr.innerHTML = `
+        <td><b>${r['_fuente']||'—'}</b></td>
+        <td>${r['canal']||'—'}</td>
+        <td>${r['sku_codigo']||'—'}</td>
+        <td>${r['moneda']||'—'}</td>
+        <td>${num(r['cajas']) !== 0 ? num(r['cajas']).toLocaleString() : '<span style="color:#EF4444">'+num(r['cajas'])+'</span>'}</td>
+        <td>${num(r['monto_local']).toLocaleString()}</td>
+        <td>${badgesHtml}</td>`;
+      tbodyP.appendChild(tr);
     });
 
     // Flags bar
