@@ -194,23 +194,58 @@
 
 <!-- PÁGINA 2 -->
 <div class="page" id="p2">
-  <div class="chart-grid-2">
-    <div class="chart-card">
-      <h3>Distribución de montos — outliers de monto</h3>
-      <canvas id="chart-scatter-monto"></canvas>
+
+  <!-- KPIs outliers -->
+  <div class="kpi-grid" style="grid-template-columns:repeat(3,1fr);margin-bottom:20px">
+    <div class="kpi-card red">
+      <div class="kpi-label">Outliers de Monto</div>
+      <div class="kpi-value" id="kpi-out-monto">—</div>
+      <div class="kpi-sub">detectados por moneda (IQR)</div>
     </div>
-    <div class="chart-card">
-      <h3>Distribución de cajas — outliers de volumen</h3>
-      <canvas id="chart-scatter-cajas"></canvas>
+    <div class="kpi-card yellow">
+      <div class="kpi-label">Outliers de Volumen</div>
+      <div class="kpi-value" id="kpi-out-cajas">—</div>
+      <div class="kpi-sub">detectados por fuente (IQR)</div>
+    </div>
+    <div class="kpi-card">
+      <div class="kpi-label">Total Registros Afectados</div>
+      <div class="kpi-value" id="kpi-out-total">—</div>
+      <div class="kpi-sub">con al menos un outlier</div>
     </div>
   </div>
-  <div class="table-card" style="margin-top:20px">
-    <h3>Registros con outliers detectados</h3>
+
+  <!-- Monto por moneda -->
+  <div style="margin-bottom:8px;padding:0 4px">
+    <span style="font-size:12px;font-weight:700;color:#475569;text-transform:uppercase;letter-spacing:.5px">
+      📊 Monto local por registro — separado por moneda (escala logarítmica)
+    </span>
+  </div>
+  <div class="chart-grid-3" style="margin-bottom:20px">
+    <div class="chart-card"><h3>Monto — GTQ</h3><canvas id="c-monto-gtq"></canvas></div>
+    <div class="chart-card"><h3>Monto — DOP</h3><canvas id="c-monto-dop"></canvas></div>
+    <div class="chart-card"><h3>Monto — USD</h3><canvas id="c-monto-usd"></canvas></div>
+  </div>
+
+  <!-- Cajas por moneda -->
+  <div style="margin-bottom:8px;padding:0 4px">
+    <span style="font-size:12px;font-weight:700;color:#475569;text-transform:uppercase;letter-spacing:.5px">
+      📦 Cajas por registro — separado por moneda (escala logarítmica)
+    </span>
+  </div>
+  <div class="chart-grid-3" style="margin-bottom:20px">
+    <div class="chart-card"><h3>Cajas — GTQ</h3><canvas id="c-cajas-gtq"></canvas></div>
+    <div class="chart-card"><h3>Cajas — DOP</h3><canvas id="c-cajas-dop"></canvas></div>
+    <div class="chart-card"><h3>Cajas — USD</h3><canvas id="c-cajas-usd"></canvas></div>
+  </div>
+
+  <!-- Tabla -->
+  <div class="table-card">
+    <h3>Detalle de registros con outliers detectados</h3>
     <table id="tabla-outliers">
       <thead>
         <tr>
           <th>Fuente</th><th>Canal</th><th>SKU</th>
-          <th>Cajas</th><th>Monto Local</th>
+          <th>Moneda</th><th>Cajas</th><th>Monto Local</th>
           <th>Outlier Monto</th><th>Outlier Volumen</th>
         </tr>
       </thead>
@@ -355,62 +390,101 @@
 
   // ── PÁGINA 2 ────────────────────────────────────────────────
   function buildPage2(data) {
-    const medianaMonto = median(data.map(r => num(r['monto_local'])).filter(v => v > 0));
-    const medianasCajas= median(data.map(r => num(r['cajas'])).filter(v => v > 0));
-    const umbralMonto  = medianaMonto  * 1000;
-    const umbralCajas  = medianasCajas * 500;
+    const MONEDAS = ['GTQ','DOP','USD'];
+    const COLOR_MON = { GTQ:'#2563EB', DOP:'#10B981', USD:'#F59E0B' };
 
-    const puntosM = data.map((r,i) => ({
-      x: i, y: num(r['monto_local']),
-      outlier: parseBool(r['flag_outlier_monto']),
-      fuente: r['_fuente'] || ''
-    }));
-    const puntosC = data.map((r,i) => ({
-      x: i, y: num(r['cajas']),
-      outlier: parseBool(r['flag_outlier_volumen']),
-      fuente: r['_fuente'] || ''
-    }));
+    // KPIs
+    const nOutMonto = data.filter(r => parseBool(r['flag_outlier_monto'])).length;
+    const nOutCajas = data.filter(r => parseBool(r['flag_outlier_volumen'])).length;
+    const nOutTotal = data.filter(r =>
+      parseBool(r['flag_outlier_monto']) || parseBool(r['flag_outlier_volumen'])).length;
+    document.getElementById('kpi-out-monto').textContent = nOutMonto;
+    document.getElementById('kpi-out-cajas').textContent = nOutCajas;
+    document.getElementById('kpi-out-total').textContent = nOutTotal;
 
-    function scatterChart(canvasId, puntos, label, umbral, medVal) {
+    // Función genérica para gráfico de barras por moneda
+    function barChart(canvasId, moneda, campo, flagCol) {
+      const sub      = data.filter(r => r['moneda'] === moneda);
+      const valores  = sub.map(r => num(r[campo]));
+      const esOut    = sub.map(r => parseBool(r[flagCol]));
+      const colores  = esOut.map(o => o ? '#EF4444' : COLOR_MON[moneda] + 'AA');
+      const med      = median(valores.filter(v => v > 0));
+
       new Chart(document.getElementById(canvasId), {
-        type: 'scatter',
+        type: 'bar',
         data: {
-          datasets: [
-            { label: 'Normal',
-              data: puntos.filter(p => !p.outlier),
-              backgroundColor: '#2563EB44', pointRadius: 4 },
-            { label: 'Outlier',
-              data: puntos.filter(p => p.outlier),
-              backgroundColor: '#EF4444', pointRadius: 8,
-              pointStyle: 'star' }
-          ]
+          labels: sub.map((_, i) => i + 1),
+          datasets: [{
+            data: valores,
+            backgroundColor: colores,
+            borderRadius: 3,
+            borderWidth: esOut.map(o => o ? 2 : 0),
+            borderColor: esOut.map(o => o ? '#991B1B' : 'transparent'),
+          }]
         },
         options: {
           plugins: {
-            legend: { position: 'bottom' },
-            annotation: { annotations: {
-              line1: { type:'line', yMin: medVal, yMax: medVal,
-                       borderColor:'#F59E0B', borderDash:[5,5],
-                       label:{ content:`Mediana: ${medVal.toFixed(0)}`,
-                               display:true, position:'end' }}
-            }}
+            legend: { display: false },
+            tooltip: {
+              callbacks: {
+                title: ctx => {
+                  const r = sub[ctx[0].dataIndex];
+                  return `${r['_fuente'] || '—'} · ${r['canal'] || '—'}`;
+                },
+                label: ctx => {
+                  const r   = sub[ctx.dataIndex];
+                  const out = parseBool(r[flagCol]);
+                  return [
+                    ` ${campo === 'monto_local' ? 'Monto' : 'Cajas'}: ${ctx.raw.toLocaleString()} ${moneda}`,
+                    ` SKU: ${r['sku_codigo'] || '—'}`,
+                    out ? ' ⚠ OUTLIER DETECTADO' : ''
+                  ].filter(Boolean);
+                }
+              }
+            }
           },
           scales: {
-            x: { title: { display: true, text: 'Índice registro' } },
-            y: { type: 'logarithmic',
-                 title: { display: true, text: `${label} (log)` } }
+            x: { display: false },
+            y: {
+              type: 'logarithmic',
+              title: { display: true,
+                text: `${campo === 'monto_local' ? 'Monto' : 'Cajas'} ${moneda} (log)`,
+                font: { size: 10 } },
+              ticks: { callback: v => v.toLocaleString() }
+            }
           }
         }
       });
+
+      // Leyenda manual debajo del canvas
+      const card = document.getElementById(canvasId).parentElement;
+      const hasOut = esOut.some(Boolean);
+      const legend = document.createElement('div');
+      legend.style.cssText = 'margin-top:8px;font-size:11px;display:flex;gap:12px;align-items:center';
+      legend.innerHTML = `
+        <span style="display:flex;align-items:center;gap:4px">
+          <span style="width:12px;height:12px;border-radius:2px;background:${COLOR_MON[moneda]}AA;display:inline-block"></span>
+          Normal (${valores.filter((_, i) => !esOut[i]).length})
+        </span>
+        <span style="display:flex;align-items:center;gap:4px">
+          <span style="width:12px;height:12px;border-radius:2px;background:#EF4444;display:inline-block"></span>
+          ${hasOut ? `⚠ Outlier (${esOut.filter(Boolean).length})` : 'Sin outliers ✓'}
+        </span>
+        <span style="color:#94A3B8">Mediana: ${med.toFixed(0)}</span>`;
+      card.appendChild(legend);
     }
 
-    scatterChart('chart-scatter-monto', puntosM, 'Monto local', umbralMonto, medianaMonto);
-    scatterChart('chart-scatter-cajas', puntosC, 'Cajas', umbralCajas, medianasCajas);
+    // Generar 6 gráficos
+    MONEDAS.forEach(mon => {
+      barChart(`c-monto-${mon.toLowerCase()}`, mon, 'monto_local',  'flag_outlier_monto');
+      barChart(`c-cajas-${mon.toLowerCase()}`, mon, 'cajas',        'flag_outlier_volumen');
+    });
 
     // Tabla outliers
     const outliers = data.filter(r =>
       parseBool(r['flag_outlier_monto']) || parseBool(r['flag_outlier_volumen'])
-    );
+    ).sort((a, b) => num(b['monto_local']) - num(a['monto_local']));
+
     const tbody = document.querySelector('#tabla-outliers tbody');
     outliers.forEach(r => {
       const tr = document.createElement('tr');
@@ -418,6 +492,7 @@
         <td>${r['_fuente']||'—'}</td>
         <td>${r['canal']||'—'}</td>
         <td>${r['sku_codigo']||'—'}</td>
+        <td><b>${r['moneda']||'—'}</b></td>
         <td><b>${num(r['cajas']).toLocaleString()}</b></td>
         <td><b>${num(r['monto_local']).toLocaleString()}</b></td>
         <td>${parseBool(r['flag_outlier_monto'])
